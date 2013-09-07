@@ -48,6 +48,10 @@ if os.name == "nt":
 else:
     STARTUPINFO = None
 
+def lintable_view(view):
+    return view.file_name().endswith('.py') or \
+           view.settings().get('syntax').endswith("Python.tmLanguage")
+
 class PylSet(object):
     """ Pylinter Settings class"""
     settings = None
@@ -232,7 +236,9 @@ class PylinterCommand(sublime_plugin.TextCommand):
         else:
             speak("Running Pylinter on %s" % self.view.file_name())
 
-            if self.view.file_name().endswith('.py'):
+            if lintable_view(self.view):
+                # erase status message if sitting on an error line
+                self.view.erase_status(PYLINTER_STATUS_TAG)
                 thread = PylintThread(self.view, *settings)
                 thread.start()
                 self.progress_tracker(thread)
@@ -364,8 +370,7 @@ class PylinterCommand(sublime_plugin.TextCommand):
     def is_enabled(self):
         file_name = self.view.file_name()
         if file_name:
-            return file_name.endswith('.py')
-        return False
+            return lintable_view(self.view)
 
 
 class PylintThread(threading.Thread):
@@ -479,9 +484,8 @@ class BackgroundPylinter(sublime_plugin.EventListener):
         return view.rowcol(view.sel()[0].end())[0]
 
     def on_post_save(self, view):
-        self.message_stay = PylSet.get_or("message_stay", False)
-        if view.file_name().endswith('.py') and PylSet.get_or('run_on_save',
-                                                              False):
+        if lintable_view(view) and PylSet.get_or('run_on_save', False):
+            self.message_stay = PylSet.get_or("message_stay", False)
             view.run_command('pylinter')
 
     def on_selection_modified(self, view):
