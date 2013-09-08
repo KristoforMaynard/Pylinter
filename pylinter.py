@@ -32,6 +32,10 @@ py_version = sys.version_info[0]
 # To override this, set the 'verbose' setting in the configuration file
 PYLINTER_VERBOSE = False
 
+PYLINT_VERSION = None
+# Regular expression to disect Pylint error messages
+P_PYLINT_ERROR = None
+
 def speak(*msg):
     """ Log messages to the console if VERBOSE is True """
     if PYLINTER_VERBOSE:
@@ -46,7 +50,7 @@ else:
 
 class PylSet(object):
     """ Pylinter Settings class"""
-    settings = sublime.load_settings('Pylinter.sublime-settings')
+    settings = None
 
     @classmethod
     def _get_settings_obj(cls):
@@ -57,6 +61,44 @@ class PylSet(object):
                 return view_settings
         except AttributeError:
             pass
+
+        # ST3 hack since in st3, sublime.* will quietly do nothing in the module
+        # init... so while cls.settings is not None, it contains no real info...
+        # if ST3 then check if the settings are actually loaded before returning
+        if cls.settings is None:
+            settings = sublime.load_settings('Pylinter.sublime-settings')
+
+            if ST3 and settings.settings_id == 0:
+                raise RuntimeError("Pylinter tried to load settings during "
+                                   "ST startup.")
+                return None
+
+            cls.settings = settings
+
+            # note, this is recursive, but only once since we set cls.settings.
+            # version checking needs to happen here so that we know the paths
+            # from the settings file
+            global PYLINT_VERSION, P_PYLINT_ERROR
+            PYLINT_VERSION = cls.get_lint_version()
+
+            # change parsing regex for PYLINT 1.0.0
+            if PYLINT_VERSION[0] == 0:
+                # Regular expression to disect Pylint error messages
+                P_PYLINT_ERROR = re.compile(r"""
+                    ^(?P<file>.+?):(?P<line>[0-9]+):\ # file name and line number
+                    \[(?P<type>[a-z])(?P<errno>\d+)   # message type and error number
+                                                      # e.g. E0101
+                    (,\ (?P<hint>.+))?\]\             # optional class or function name
+                    (?P<msg>.*)                       # finally, the error message
+                    """, re.IGNORECASE | re.VERBOSE)
+            else:
+                P_PYLINT_ERROR = re.compile(r"""
+                    ^(?P<file>.+?):(?P<line>[0-9]+): # file name and line number
+                    (?P<type>[a-z])(?P<errno>\d+):   # message type and error number,
+                                                     # e.g. E0101
+                    (?P<msg>.*)                      # finally, the error message
+                    """, re.IGNORECASE | re.VERBOSE)
+        
         return cls.settings
 
     @classmethod
@@ -77,7 +119,7 @@ class PylSet(object):
 
     @classmethod
     def read_settings(cls):
-        global PYLINTER_VERBOSE
+        global PYLINTER_VERBOSE, PYLINT_VERSION
 
         PYLINTER_VERBOSE = cls.get_or('verbose', False)
         speak("Verbose is", str(PYLINTER_VERBOSE))
@@ -118,7 +160,8 @@ class PylSet(object):
         pylint_path = PylSet.get_or('pylint_path', None)
 
         if not pylint_path:
-            cmd = ["python",
+            python_bin = python_bin = cls.get_or('python_bin', 'python')
+            cmd = [python_bin,
                    "-c"]
             if py_version == 2:
                 cmd.append("import pylint; print pylint.__path__[0]")
@@ -156,26 +199,6 @@ class PylSet(object):
 
 class PylSetException(Exception):
     pass
-
-PYLINT_VERSION = PylSet.get_lint_version()
-
-# Regular expression to disect Pylint error messages
-if PYLINT_VERSION[0] == 0:
-    # Regular expression to disect Pylint error messages
-    P_PYLINT_ERROR = re.compile(r"""
-        ^(?P<file>.+?):(?P<line>[0-9]+):\ # file name and line number
-        \[(?P<type>[a-z])(?P<errno>\d+)   # message type and error number
-                                          # e.g. E0101
-        (,\ (?P<hint>.+))?\]\             # optional class or function name
-        (?P<msg>.*)                       # finally, the error message
-        """, re.IGNORECASE | re.VERBOSE)
-else:
-    P_PYLINT_ERROR = re.compile(r"""
-        ^(?P<file>.+?):(?P<line>[0-9]+): # file name and line number
-        (?P<type>[a-z])(?P<errno>\d+):   # message type and error number,
-                                         # e.g. E0101
-        (?P<msg>.*)                      # finally, the error message
-        """, re.IGNORECASE | re.VERBOSE)
 
 # The output format we want PyLint's error messages to be in
 PYLINT_FORMAT = '--msg-template={path}:{line}:{msg_id}:{msg}'
@@ -450,13 +473,13 @@ class BackgroundPylinter(sublime_plugin.EventListener):
     def __init__(self):
         sublime_plugin.EventListener.__init__(self)
         self.last_selected_line = -1
-        self.message_stay = PylSet.get_or("message_stay", False)
         self.status_active = False
 
     def _last_selected_lineno(self, view):
         return view.rowcol(view.sel()[0].end())[0]
 
     def on_post_save(self, view):
+        self.message_stay = PylSet.get_or("message_stay", False)
         if view.file_name().endswith('.py') and PylSet.get_or('run_on_save',
                                                               False):
             view.run_command('pylinter')
