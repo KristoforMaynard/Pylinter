@@ -292,6 +292,15 @@ class PylinterCommand(sublime_plugin.TextCommand):
             view.add_regions('pylinter.' + key, regions,
                              'pylinter.' + key, icons[key],
                              region_flag)
+            
+        # set status message if command finished on an error line
+        if PylSet.get_or("message_stay", False):
+            view_id = view.id()
+            lineno = view.rowcol(view.sel()[0].end())[0]
+            if lineno in PYLINTER_ERRORS[view_id]:
+                err_str = PYLINTER_ERRORS[view_id][lineno]
+                view.set_status(PYLINTER_STATUS_TAG, err_str)
+
 
     def popup_error_list(self):
         view_id = self.view.id()
@@ -497,6 +506,8 @@ class BackgroundPylinter(sublime_plugin.EventListener):
     def on_post_save(self, view):
         if lintable_view(view) and PylSet.get_or('run_on_save', False):
             self.message_stay = PylSet.get_or("message_stay", False)
+            if self.message_stay:
+                self.status_active = True
             view.run_command('pylinter')
 
     def on_selection_modified(self, view):
