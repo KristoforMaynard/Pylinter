@@ -459,6 +459,9 @@ class PylintThread(threading.Thread):
             if not err.startswith("No config file found"):
                 sublime.error_message("Fatal pylint error:\n%s" % (errlines[-2]))
 
+        if P_PYLINT_ERROR is None:
+            PylSet._get_settings_obj()  # hacky, but it lets pylinter reload
+
         for line in lines:
             mdic = re.match(P_PYLINT_ERROR, line)
             if mdic:
@@ -481,6 +484,12 @@ class BackgroundPylinter(sublime_plugin.EventListener):
         sublime_plugin.EventListener.__init__(self)
         self.last_selected_line = -1
         self.status_active = False
+        try:
+            # this is for plugin reload
+            self.message_stay = PylSet.get_or("message_stay", False)
+        except RuntimeError:
+            # this is for normal startup
+            self.message_stay = False
 
     def _last_selected_lineno(self, view):
         return view.rowcol(view.sel()[0].end())[0]
