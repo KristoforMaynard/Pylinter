@@ -36,6 +36,8 @@ PYLINT_VERSION = None
 # Regular expression to disect Pylint error messages
 P_PYLINT_ERROR = None
 
+PYLINTER_STATUS_TAG = "Pylinter"
+
 def speak(*msg):
     """ Log messages to the console if VERBOSE is True """
     if PYLINTER_VERBOSE:
@@ -498,10 +500,10 @@ class BackgroundPylinter(sublime_plugin.EventListener):
                 if self.last_selected_line in PYLINTER_ERRORS[view_id]:
                     err_str = PYLINTER_ERRORS[view_id][self.last_selected_line]
                     if self.message_stay:
-                        view.set_status('Pylinter', err_str)
+                        view.set_status(PYLINTER_STATUS_TAG, err_str)
                         self.status_active = True
                     else:
                         sublime.status_message(err_str)
                 elif self.status_active:
-                    view.erase_status('Pylinter')
+                    view.erase_status(PYLINTER_STATUS_TAG)
                     self.status_active = False
