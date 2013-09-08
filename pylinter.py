@@ -173,7 +173,7 @@ class PylSet(object):
                                     startupinfo=STARTUPINFO)
             out, _ = proc.communicate()
 
-            if out != "":
+            if out.strip():
                 pylint_path = os.path.join(out.strip(),
                                            b"lint.py").decode("utf-8")
 
