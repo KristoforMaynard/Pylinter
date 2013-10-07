@@ -380,6 +380,7 @@ class PylinterCommand(sublime_plugin.TextCommand):
         file_name = self.view.file_name()
         if file_name:
             return lintable_view(self.view)
+        return False
 
 
 class PylintThread(threading.Thread):
